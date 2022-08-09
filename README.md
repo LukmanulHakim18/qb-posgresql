@@ -6,7 +6,7 @@ I dedicate this query builder to be used in the `Blue Bird` service.
 
 - Featured ORM
 - Easy to plug and play query condition
-- Easy to do Transactions, Nested Transactions, Save Point, RollbackTo to Saved Point
+- Easy to do Transactions
 - Every feature comes with tests
 - Debug Mode
 
@@ -231,4 +231,95 @@ if err != nil {
 if res.Next() {
     res.Scan(&totalDataComments)
 }
+```
+
+## Make Transaction
+
+### # Begin transaction
+
+Untuk memulai transaction kita harus memanggil function `TrxBegin`
+setelah itu kita dapat melakuakan query apa saja kedalam transaction ini dan nantinya akan dicommit ataupun di dirollback
+
+```go
+// Make instence of interface for use function *note: GetConnection returning *sql.DB
+qb := qb.NewQueryBuilder(GetConnection())
+
+// Memulai transaksi
+qb.TrxBegin()
+
+```
+
+pada tahap ini data akan di simpan di temporary, sampai ada perintah berikutnya atau menunggu connection timeout
+
+### # Commit transaction
+
+Untuk melanjutkan transaction yang telah berjalan lancar atau sudah sesuai kita harus memanggil function `TrxCommit`
+untuk menyimpan perubahan apapun perubahan yang telah dilakukan ke db dan menutup transaction
+
+```go
+// Make instence of interface for use function *note: GetConnection returning *sql.DB
+qb := qb.NewQueryBuilder(GetConnection()
+
+// Memulai transaksi
+qb.TrxBegin()
+
+// commit transaksi
+qb.TrxCommit()
+
+```
+
+pada tahap ini data akan di simpan di DB.
+
+### # Rollback transaction
+
+Untuk membatalkan transaction yang telah berjalan atau merollback seluruh perubahan yang dilakukan didalam transaksi, harus memanggil function `TrxRollback`
+untuk membatalkan semua perubahan yang dilakukan dan menutup transaction
+
+```go
+// Make instence of interface for use function *note: GetConnection returning *sql.DB
+qb := qb.NewQueryBuilder(GetConnection()
+
+// Memulai transaksi
+qb.TrxBegin()
+
+// commit transaksi
+qb.TrxRollback()
+
+
+```
+
+## Debug Mode
+
+Untuk mencetak query dan argument pada terminal dapat mengeset enverionment "DEBUG_MODE = true" dapat dilihat dari hasil query berikut
+
+```go
+qb := qb.NewQueryBuilder(GetConnection())
+comments := []Comment{}
+err := qb.Select("comments").
+    Where("email", "LIKE", "%"+"aboy"+"%").
+    WhereIn("id", 83, 84, 85).
+    OrWhere("id", "<>", 0).
+    Limit(20).
+    Offset(2).
+    WhereBetween("created_at", time.Now().AddDate(0, -3, 0), time.Now()).
+    OrderBy("created_at", "asc").
+    GroupBy("email", "id").
+    Find(&comments)
+
+if err != nil {
+    panic(err)
+}
+```
+
+Menghasilkan output sebagai berikut
+
+```
+query => SELECT * FROM comments WHERE email LIKE $1 AND id IN ($2, $3, $4) OR id <> $5 AND (created_at BETWEEN ($6) AND ($7)) GROUP BY email, id ORDER BY created_at ASC LIMIT 20 OFFSET 2
+param => $1=>%aboy%,
+         $2=>83,
+         $3=>84,
+         $4=>85,
+         $5=>0,
+         $6=>2022-05-09 17:06:05.7043322 +0700 +07,
+         $7=>2022-08-09 17:06:05.7048644 +0700 +07 m=+0.003841101
 ```
