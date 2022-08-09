@@ -1,4 +1,4 @@
-package querybuilder
+package qb_implement
 
 import (
 	"database/sql"
@@ -17,33 +17,37 @@ const (
 	ORDER_BY_DESC = "DESC"
 )
 
-type queryBuilder struct {
-	DBCon             *sql.DB       // menampung connection DB
-	DebugMode         bool          // jika true akan menampilkan query ketika eksekusi, tambahkan pada .env DEBUG_MODE = true
-	Action            string        // menampung Action
-	Args              []interface{} //menampung seluruh argument
-	Columns           []Column      // menampung data set untuk update, select atau insert
-	Conditions        []condition   // menampung data kondisi
-	TableName         string        // menampung table name
-	LimitVal          int           // menampung Limit
-	OffsetValue       int           // menampung Order By value
-	OrderByConditions []orderBy     // menampung Order By
-	PrimeryKey        interface{}   // menampung data Primary Key
+type QueryBuilder struct {
+	DBCon             *sql.DB       // accommodate connection DB
+	DebugMode         bool          // accommodate debug config, if true then print query and param
+	Action            string        // accommodate Action
+	Args              []interface{} // accommodate all arguments for query
+	Columns           []Column      // accommodate data set for update, select or insert
+	Conditions        []Condition   // accommodate condition
+	TableName         string        // accommodate table name
+	LimitVal          int           // accommodate limit
+	OffsetValue       int64         // accommodate offset
+	OrderByConditions []OrderBy     // accommodate order by
+	GroupByConditions []string      // accommodate order by
+	PrimeryKey        interface{}   // accommodate Primary Key value
 }
 
 // ======================================= DB Section =======================================
-func (qb *queryBuilder) Close() {
+func (qb *QueryBuilder) Close() {
 	qb.DBCon.Close()
 }
 
 // ======================================= Action Section =======================================
-func (qb *queryBuilder) Select(tableName string) *queryBuilder {
+
+// Make query select * from table_name
+func (qb *QueryBuilder) Select(tableName string) *QueryBuilder {
 	qb.TableName = tableName
 	qb.Action = ACTION_SELECT
 	return qb
 }
 
-func (qb *queryBuilder) Update(tableName string, entity interface{}) error {
+// Make query UPDATE by entity
+func (qb *QueryBuilder) Update(tableName string, entity interface{}) error {
 	qb.TableName = tableName
 	qb.Action = ACTION_UPDATE
 
@@ -54,12 +58,14 @@ func (qb *queryBuilder) Update(tableName string, entity interface{}) error {
 	qb.Where("id", "=", qb.PrimeryKey)
 
 	queryUpdate := qb.updateToString()
-	querySet := qb.mappingDataSetUpdste()
+	querySet := qb.mappingDataSetUpdate()
 	queryWhere := qb.conditionToString()
 	queryFull := fmt.Sprintf("%s %s %s", queryUpdate, querySet, queryWhere)
 	return qb.execute(queryFull)
 }
-func (qb *queryBuilder) Insert(tableName string, entity interface{}) (int64, error) {
+
+// Make query INSERT by entity
+func (qb *QueryBuilder) Insert(tableName string, entity interface{}) (int64, error) {
 	qb.TableName = tableName
 	qb.Action = ACTION_INSERT
 
@@ -73,7 +79,8 @@ func (qb *queryBuilder) Insert(tableName string, entity interface{}) (int64, err
 	return primaryKey.(int64), err
 }
 
-func (qb *queryBuilder) Delete(tableName string, entity interface{}) error {
+// Make query DELETE by entity
+func (qb *QueryBuilder) Delete(tableName string, entity interface{}) error {
 	qb.TableName = tableName
 	qb.Action = ACTION_DELETE
 
@@ -89,19 +96,20 @@ func (qb *queryBuilder) Delete(tableName string, entity interface{}) error {
 	return qb.execute(queryFull)
 }
 
-func (qb *queryBuilder) Raw(query string, args ...interface{}) (*sql.Rows, error) {
-	for _, v := range args {
-		qb.Args = append(qb.Args, v)
-	}
-	res, err := qb.executeRaw(query)
+// Make query RAW
+// you can creat enything query with param ?, and pass argument after query
+// returning *sql.Rows
+func (qb *QueryBuilder) Raw(query string, args ...interface{}) (*sql.Rows, error) {
+	qb.Args = append(qb.Args, args...)
+	res, err := qb.executeRawQuery(query)
 	return res, err
 }
 
 // ======================================= Condition Section =======================================
 
 // Where make condition AND in query
-func (qb *queryBuilder) Where(columnName string, symbol string, value interface{}) *queryBuilder {
-	where := condition{
+func (qb *QueryBuilder) Where(columnName string, symbol string, value interface{}) *QueryBuilder {
+	where := Condition{
 		ColumnName: columnName,
 		Symbol:     symbol,
 		Value:      value,
@@ -113,8 +121,8 @@ func (qb *queryBuilder) Where(columnName string, symbol string, value interface{
 }
 
 // Where make condition OR in query
-func (qb *queryBuilder) OrWhere(columnName string, symbol string, value interface{}) *queryBuilder {
-	where := condition{
+func (qb *QueryBuilder) OrWhere(columnName string, symbol string, value interface{}) *QueryBuilder {
+	where := Condition{
 		ColumnName: columnName,
 		Symbol:     symbol,
 		Value:      value,
@@ -126,8 +134,8 @@ func (qb *queryBuilder) OrWhere(columnName string, symbol string, value interfac
 }
 
 // Where make condition AND IN (...) in query
-func (qb *queryBuilder) WhereIn(columnName string, value ...interface{}) *queryBuilder {
-	where := condition{
+func (qb *QueryBuilder) WhereIn(columnName string, value ...interface{}) *QueryBuilder {
+	where := Condition{
 		ColumnName: columnName,
 		Value:      value,
 		Connector:  CONDITION_WHERE_IN,
@@ -138,8 +146,8 @@ func (qb *queryBuilder) WhereIn(columnName string, value ...interface{}) *queryB
 }
 
 // Where make condition AND NOT IN (...) in query
-func (qb *queryBuilder) WhereNotIn(columnName string, value ...interface{}) *queryBuilder {
-	where := condition{
+func (qb *QueryBuilder) WhereNotIn(columnName string, value ...interface{}) *QueryBuilder {
+	where := Condition{
 		ColumnName: columnName,
 		Value:      value,
 		Connector:  CONDITION_WHERE_NOT_IN,
@@ -149,18 +157,29 @@ func (qb *queryBuilder) WhereNotIn(columnName string, value ...interface{}) *que
 	return qb
 }
 
+func (qb *QueryBuilder) WhereBetween(columnName string, val1, val2 interface{}) *QueryBuilder {
+	value := []interface{}{val1, val2}
+	where := Condition{
+		ColumnName: columnName,
+		Value:      value,
+		Connector:  CONDITION_WHERE_BETWEEN,
+	}
+	qb.Conditions = append(qb.Conditions, where)
+	return qb
+}
+
 // Where make condition ORDER BY ASC/DESC in query
-func (qb *queryBuilder) OrderBy(columnName, orderByKey string) *queryBuilder {
+func (qb *QueryBuilder) OrderBy(columnName, orderByKey string) *QueryBuilder {
 	orderByUpper := strings.ToUpper(orderByKey)
 	if orderByUpper == ORDER_BY_ASC {
-		orderBy := orderBy{
+		orderBy := OrderBy{
 			ColumnName: columnName,
 			Value:      ORDER_BY_ASC,
 		}
 		qb.OrderByConditions = append(qb.OrderByConditions, orderBy)
 	}
 	if orderByUpper == ORDER_BY_DESC {
-		orderBy := orderBy{
+		orderBy := OrderBy{
 			ColumnName: columnName,
 			Value:      ORDER_BY_DESC,
 		}
@@ -169,8 +188,20 @@ func (qb *queryBuilder) OrderBy(columnName, orderByKey string) *queryBuilder {
 	return qb
 }
 
-// Where make condition LIMIT in query
-func (qb *queryBuilder) Limit(limitVal int) *queryBuilder {
+// Make condition LIMIT in query
+func (qb *QueryBuilder) Limit(limitVal int) *QueryBuilder {
 	qb.LimitVal = limitVal
+	return qb
+}
+
+// Make condition LIMIT in query
+func (qb *QueryBuilder) Offset(offsetVal int64) *QueryBuilder {
+	qb.OffsetValue = offsetVal
+	return qb
+}
+
+// Deprecated: GroupBy is deprecated.
+func (qb *QueryBuilder) GroupBy(columnName ...string) *QueryBuilder {
+	qb.GroupByConditions = append(qb.GroupByConditions, columnName...)
 	return qb
 }

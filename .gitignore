@@ -1,2 +1,3 @@
 .env
-query_builder_test.go
+/random_test/
+*test.go

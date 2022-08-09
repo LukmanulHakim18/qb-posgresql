@@ -1,4 +1,4 @@
-package querybuilder
+package qb_implement
 
 import (
 	"fmt"
@@ -10,7 +10,7 @@ type Column struct {
 	Value interface{}
 }
 
-func (qb *queryBuilder) selectToString() string {
+func (qb *QueryBuilder) selectToString() string {
 	if len(qb.Columns) == 0 {
 		return fmt.Sprintf("SELECT * FROM %s", qb.TableName)
 	}
@@ -23,20 +23,20 @@ func (qb *queryBuilder) selectToString() string {
 	return querySelect
 }
 
-func (qb *queryBuilder) updateToString() string {
+func (qb *QueryBuilder) updateToString() string {
 	querySelect := fmt.Sprintf("UPDATE %s ", qb.TableName)
 	return querySelect
 }
-func (qb *queryBuilder) insertToString() string {
+func (qb *QueryBuilder) insertToString() string {
 	querySelect := fmt.Sprintf("INSERT INTO %s ", qb.TableName)
 	return querySelect
 }
-func (qb *queryBuilder) deleteToString() string {
+func (qb *QueryBuilder) deleteToString() string {
 	querySelect := fmt.Sprintf("DELETE FROM %s ", qb.TableName)
 	return querySelect
 }
 
-func (qb *queryBuilder) mappingDataSetUpdste() string {
+func (qb *QueryBuilder) mappingDataSetUpdate() string {
 	fieldTemp := []string{}
 	for _, column := range qb.Columns {
 		fieldTemp = append(fieldTemp, fmt.Sprintf("%s = ?", column.Name))
@@ -46,10 +46,10 @@ func (qb *queryBuilder) mappingDataSetUpdste() string {
 	fieldUpdate := fmt.Sprintf("SET %s ", strings.Join(fieldTemp, ", "))
 	return fieldUpdate
 }
-func (qb *queryBuilder) mappingDataSetInsert() string {
+func (qb *QueryBuilder) mappingDataSetInsert() string {
 	fieldTemp := []string{}
 	for _, column := range qb.Columns {
-		fieldTemp = append(fieldTemp, fmt.Sprintf("%s", column.Name))
+		fieldTemp = append(fieldTemp, column.Name)
 		qb.Args = append(qb.Args, column.Value)
 	}
 
