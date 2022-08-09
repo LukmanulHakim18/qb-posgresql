@@ -23,7 +23,11 @@ go get -u github.com/LukmanulHakim18/qb-posgresql
 2. Import it in your code:
 
 ```
-import "github.com/LukmanulHakim18/qb-posgresql"
+import (
+    "database/sql"
+    _ "github.com/lib/pq"
+    "github.com/LukmanulHakim18/qb-posgresql"
+)
 ```
 
 ## Rulse
