@@ -24,8 +24,14 @@ func (qb *QueryBuilder) executeQuerySelect() (*sql.Rows, error) {
 	queryFull := qb.ValidatedQueryAndMapping(strings.Join(queries, " ")) // merubah symbol ? -> $n
 
 	util.DebugQueryAndParams(qb.DebugMode, queryFull, qb.Args) // for debuging
-
-	rows, err := qb.DBCon.Query(queryFull, qb.Args...)
+	if qb.DBTransaction != nil {
+		rows, err := qb.DBTransaction.Query(queryFull, qb.Args...)
+		if err != nil {
+			return nil, err
+		}
+		return rows, nil
+	}
+	rows, err := qb.DBConnection.Query(queryFull, qb.Args...)
 	if err != nil {
 		return nil, err
 	}
@@ -77,7 +83,14 @@ func (qb *QueryBuilder) execute(query string) error {
 	query = qb.ValidatedQueryAndMapping(query)             // merubah symbol ? -> $n
 	util.DebugQueryAndParams(qb.DebugMode, query, qb.Args) // for debuging
 
-	_, err := qb.DBCon.Exec(query, qb.Args...)
+	if qb.DBTransaction != nil {
+		_, err := qb.DBTransaction.Exec(query, qb.Args...)
+		if err != nil {
+			return err
+		}
+		return nil
+	}
+	_, err := qb.DBConnection.Exec(query, qb.Args...)
 	if err != nil {
 		return err
 	}
@@ -91,8 +104,14 @@ func (qb *QueryBuilder) save(query string) (interface{}, error) {
 	query = qb.ValidatedQueryAndMapping(query) // merubah symbol ? -> $n
 	queryCallback := fmt.Sprintf("%s RETURNING id", query)
 	util.DebugQueryAndParams(qb.DebugMode, query, qb.Args) // for debuging
-
-	err := qb.DBCon.QueryRow(queryCallback, qb.Args...).Scan(&primeryKey)
+	if qb.DBTransaction != nil {
+		err := qb.DBTransaction.QueryRow(queryCallback, qb.Args...).Scan(&primeryKey)
+		if err != nil {
+			return primeryKey, err
+		}
+		return primeryKey, nil
+	}
+	err := qb.DBConnection.QueryRow(queryCallback, qb.Args...).Scan(&primeryKey)
 	if err != nil {
 		return primeryKey, err
 	}
@@ -104,7 +123,14 @@ func (qb *QueryBuilder) executeRawQuery(query string) (*sql.Rows, error) {
 	defer qb.deferFunc()
 	query = qb.ValidatedQueryAndMapping(query)             // merubah symbol ? -> $n
 	util.DebugQueryAndParams(qb.DebugMode, query, qb.Args) // for debuging
-	res, err := qb.DBCon.Query(query, qb.Args...)
+	if qb.DBTransaction != nil {
+		res, err := qb.DBTransaction.Query(query, qb.Args...)
+		if err != nil {
+			return res, err
+		}
+		return res, nil
+	}
+	res, err := qb.DBConnection.Query(query, qb.Args...)
 	if err != nil {
 		return res, err
 	}

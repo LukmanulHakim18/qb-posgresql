@@ -34,6 +34,9 @@ type QueryBuilder interface {
 	ScanRow(rows *sql.Rows, obj interface{}) error
 	ScanRows(rows *sql.Rows, obj interface{}) error
 
-	//Close Connection
+	// Manipulation Connection
+	TrxBegin()
+	TrxRollback()
+	TrxCommit()
 	Close()
 }

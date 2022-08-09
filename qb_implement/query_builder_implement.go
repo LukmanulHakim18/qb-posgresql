@@ -18,7 +18,8 @@ const (
 )
 
 type QueryBuilder struct {
-	DBCon             *sql.DB       // accommodate connection DB
+	DBConnection      *sql.DB       // accommodate connection DB
+	DBTransaction     *sql.Tx       // accommodate if query in transaction checking
 	DebugMode         bool          // accommodate debug config, if true then print query and param
 	Action            string        // accommodate Action
 	Args              []interface{} // accommodate all arguments for query
@@ -34,7 +35,19 @@ type QueryBuilder struct {
 
 // ======================================= DB Section =======================================
 func (qb *QueryBuilder) Close() {
-	qb.DBCon.Close()
+	qb.DBConnection.Close()
+}
+
+func (qb *QueryBuilder) TrxBegin() {
+	qb.DBTransaction, _ = qb.DBConnection.Begin()
+}
+func (qb *QueryBuilder) TrxRollback() {
+	qb.DBTransaction.Rollback()
+	qb.DBTransaction = nil
+}
+func (qb *QueryBuilder) TrxCommit() {
+	qb.DBTransaction.Commit()
+	qb.DBTransaction = nil
 }
 
 // ======================================= Action Section =======================================
