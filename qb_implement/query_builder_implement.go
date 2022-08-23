@@ -2,7 +2,6 @@ package qb_implement
 
 import (
 	"database/sql"
-	"errors"
 	"fmt"
 	"strings"
 )
@@ -12,6 +11,7 @@ const (
 	ACTION_INSERT = "INSERT"
 	ACTION_SELECT = "SELECT"
 	ACTION_UPDATE = "UPDATE"
+	ACTION_RAW    = "RAW"
 
 	ORDER_BY_ASC  = "ASC"
 	ORDER_BY_DESC = "DESC"
@@ -30,7 +30,8 @@ type QueryBuilder struct {
 	OffsetValue       int64         // accommodate offset
 	OrderByConditions []OrderBy     // accommodate order by
 	GroupByConditions []string      // accommodate order by
-	PrimeryKey        interface{}   // accommodate Primary Key value
+	PrimeryKey        *Column       // accommodate Primary Key value
+	Query             string        // accommodate Query Raw in transaction or not
 }
 
 // ======================================= DB Section =======================================
@@ -38,16 +39,54 @@ func (qb *QueryBuilder) Close() {
 	qb.DBConnection.Close()
 }
 
-func (qb *QueryBuilder) TrxBegin() {
-	qb.DBTransaction, _ = qb.DBConnection.Begin()
+// start transaction
+func (qb *QueryBuilder) TrxBegin() (err error) {
+	qb.DBTransaction, err = qb.DBConnection.Begin()
+	if err != nil {
+		return err
+	}
+	if qb.DebugMode {
+		fmt.Println("transaction begin")
+	}
+	return nil
 }
-func (qb *QueryBuilder) TrxRollback() {
-	qb.DBTransaction.Rollback()
+
+// Rolback Transaction and close transaction
+func (qb *QueryBuilder) TrxRollback() error {
+	if qb.DBTransaction == nil {
+		fmt.Println("not in transaction")
+		return nil
+	}
+	if err := qb.DBTransaction.Rollback(); err != nil {
+		if qb.DebugMode {
+			fmt.Println("rollback failed")
+		}
+		return err
+	}
 	qb.DBTransaction = nil
+	if qb.DebugMode {
+		fmt.Println("rollback transaction")
+	}
+	return nil
 }
-func (qb *QueryBuilder) TrxCommit() {
-	qb.DBTransaction.Commit()
+
+// Commit transaction and close transaction
+func (qb *QueryBuilder) TrxCommit() error {
+	if qb.DBTransaction == nil {
+		fmt.Println("not in transaction")
+		return nil
+	}
+	if err := qb.DBTransaction.Commit(); err != nil {
+		if qb.DebugMode {
+			fmt.Println("commit failed")
+		}
+		return err
+	}
 	qb.DBTransaction = nil
+	if qb.DebugMode {
+		fmt.Println("commit transaction")
+	}
+	return nil
 }
 
 // ======================================= Action Section =======================================
@@ -59,24 +98,6 @@ func (qb *QueryBuilder) Select(tableName string) *QueryBuilder {
 	return qb
 }
 
-// Make query UPDATE by entity
-func (qb *QueryBuilder) Update(tableName string, entity interface{}) error {
-	qb.TableName = tableName
-	qb.Action = ACTION_UPDATE
-
-	qb.ScanEntity(entity)
-	if qb.PrimeryKey == nil {
-		return errors.New("tags id not found in this entity")
-	}
-	qb.Where("id", "=", qb.PrimeryKey)
-
-	queryUpdate := qb.updateToString()
-	querySet := qb.mappingDataSetUpdate()
-	queryWhere := qb.conditionToString()
-	queryFull := fmt.Sprintf("%s %s %s", queryUpdate, querySet, queryWhere)
-	return qb.execute(queryFull)
-}
-
 // Make query INSERT by entity
 func (qb *QueryBuilder) Insert(tableName string, entity interface{}) (int64, error) {
 	qb.TableName = tableName
@@ -84,38 +105,44 @@ func (qb *QueryBuilder) Insert(tableName string, entity interface{}) (int64, err
 
 	qb.ScanEntity(entity)
 
-	queryUpdate := qb.insertToString()
-	querySet := qb.mappingDataSetInsert()
-	queryFull := fmt.Sprintf("%s %s", queryUpdate, querySet)
+	primaryKey, err := qb.save()
+	npk := int64(0)
+	if primaryKey != nil {
+		npk = primaryKey.(int64)
+	}
+	return npk, err
+}
 
-	primaryKey, err := qb.save(queryFull)
-	return primaryKey.(int64), err
+// Make query UPDATE by entity
+func (qb *QueryBuilder) Update(tableName string) (int64, error) {
+	qb.TableName = tableName
+	qb.Action = ACTION_UPDATE
+
+	if qb.PrimeryKey != nil {
+		qb.Where(qb.PrimeryKey.Name, "=", qb.PrimeryKey.Value)
+	}
+	return qb.Exec()
 }
 
 // Make query DELETE by entity
-func (qb *QueryBuilder) Delete(tableName string, entity interface{}) error {
+func (qb *QueryBuilder) Delete(tableName string) (int64, error) {
 	qb.TableName = tableName
 	qb.Action = ACTION_DELETE
 
-	qb.ScanEntity(entity)
-	if qb.PrimeryKey == nil {
-		return errors.New("tags id not found in this entity")
+	if qb.PrimeryKey != nil {
+		qb.Where(qb.PrimeryKey.Name, "=", qb.PrimeryKey.Value)
 	}
-	qb.Where("id", "=", qb.PrimeryKey)
 
-	queryDelete := qb.deleteToString()
-	queryWhere := qb.conditionToString()
-	queryFull := fmt.Sprintf("%s %s", queryDelete, queryWhere)
-	return qb.execute(queryFull)
+	return qb.Exec()
 }
 
 // Make query RAW
 // you can creat enything query with param ?, and pass argument after query
 // returning *sql.Rows
-func (qb *QueryBuilder) Raw(query string, args ...interface{}) (*sql.Rows, error) {
+func (qb *QueryBuilder) Raw(query string, args ...interface{}) *QueryBuilder {
 	qb.Args = append(qb.Args, args...)
-	res, err := qb.executeRawQuery(query)
-	return res, err
+	qb.Query = query
+	return qb
 }
 
 // ======================================= Condition Section =======================================
@@ -217,4 +244,31 @@ func (qb *QueryBuilder) Offset(offsetVal int64) *QueryBuilder {
 func (qb *QueryBuilder) GroupBy(columnName ...string) *QueryBuilder {
 	qb.GroupByConditions = append(qb.GroupByConditions, columnName...)
 	return qb
+}
+
+func (qb *QueryBuilder) Build() {
+	queries := []string{} // set table and field
+	switch qb.Action {
+	case ACTION_SELECT:
+		queries = append(queries, qb.selectToString())    // set table and field
+		queries = append(queries, qb.conditionToString()) // add condition to string
+		queries = append(queries, qb.groupByToString())   // add orderBy to string
+		queries = append(queries, qb.orderByToString())   // add orderBy to string
+		queries = append(queries, qb.limitToString())     // add limit to string
+		queries = append(queries, qb.offsetToString())    // add offset to string
+		qb.Query = strings.Join(queries, " ")             // merge all query
+	case ACTION_UPDATE:
+		queries = append(queries, qb.updateToString())
+		queries = append(queries, qb.mappingDataSetUpdate())
+		queries = append(queries, qb.conditionToString())
+		qb.Query = strings.Join(queries, " ") // merge all query
+	case ACTION_DELETE:
+		queries = append(queries, qb.deleteToString())
+		queries = append(queries, qb.conditionToString())
+		qb.Query = strings.Join(queries, " ") // merge all query
+	case ACTION_INSERT:
+		queries = append(queries, qb.insertToString())
+		queries = append(queries, qb.mappingDataSetInsert())
+		qb.Query = strings.Join(queries, " ") // merge all query
+	}
 }

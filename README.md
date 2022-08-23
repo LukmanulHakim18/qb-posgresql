@@ -1,4 +1,6 @@
-# qb-Postgresql
+# qb-Postgresql `v1.1.0`
+
+    Pada Updatean v1.1.0 terdapat perubahan structure yang bertujuan unutk membuat query lebih dinamis lagi ketika `Update` dan `Delete`, terutama ketika table tidak mempunyai coloumn `id`, atau primary key bukan `Id`
 
 I dedicate this query builder to be used in the `Blue Bird` service.
 
@@ -137,8 +139,8 @@ fmt.Println(comment)
 
 ### # Update Row of Entity
 
-Mengupdate data kedatabase menggunakan function `Update` ini bertujuan untuk mempermudah update karena tanpa perlu melakukan query yang masif. `Update` akan memberikan `error nil` jika success namun memberikan nilai `error` jika gagal.
-Sebelum update data sebaiknya melakukan uery select untuk mengambil data terlebih dahulu, agar tidak ada data yang kosong atau berubah kecuali data yang ingin diubah.
+Mengupdate data kedatabase menggunakan function `Update` ini bertujuan untuk mempermudah update karena tanpa perlu melakukan query yang masif. `Update` akan memberikan `RowsAffected` dan `error nil` jika success namun memberikan nilai `RowsAffected = 0` dan`error` jika gagal.
+Sebelum update melakukan ScanEntity untuk mengetahui field apa saja yang akan diubah dan dapat menambah kah where condition sebelum mengupdate
 
 ```go
 
@@ -157,7 +159,9 @@ comment.Comment = "Updated comment"
 comment.Email = "newemail@bluebird.co"
 
 // Update ke database
-err = qb.Update("comments", comment)
+err = qb.ScanEntity(comment).
+        Where("coloum_name", "=", "blah").
+        Update("comments")
 if err != nil {
     panic(err)
 }
@@ -176,7 +180,21 @@ qb := qb.NewQueryBuilder(GetConnection())
 comment := Comment{Id:86}
 
 // Menghapus data dengan id yang sudah di set
-err = qb.Delete("comments", comment)
+rowsAffected, err = qb.ScanEntity(comment).Delete("comments")
+if err != nil {
+    panic(err)
+}
+```
+
+Atau dapat menggunakan where jika ingin menghapus berdasarkan kondisi tertentu atau coloumn id bukan sebagai primery key
+
+```go
+
+// Make instence of interface for use function *note: GetConnection returning *sql.DB
+qb := qb.NewQueryBuilder(GetConnection())
+
+// Menghapus data dengan id yang sudah di set
+rowsAffected, err = qb.Where("primary_key", "=", "n").Delete("comments")
 if err != nil {
     panic(err)
 }

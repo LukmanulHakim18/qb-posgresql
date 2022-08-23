@@ -24,15 +24,15 @@ func (qb *QueryBuilder) selectToString() string {
 }
 
 func (qb *QueryBuilder) updateToString() string {
-	querySelect := fmt.Sprintf("UPDATE %s ", qb.TableName)
+	querySelect := fmt.Sprintf("UPDATE %s", qb.TableName)
 	return querySelect
 }
 func (qb *QueryBuilder) insertToString() string {
-	querySelect := fmt.Sprintf("INSERT INTO %s ", qb.TableName)
+	querySelect := fmt.Sprintf("INSERT INTO %s", qb.TableName)
 	return querySelect
 }
 func (qb *QueryBuilder) deleteToString() string {
-	querySelect := fmt.Sprintf("DELETE FROM %s ", qb.TableName)
+	querySelect := fmt.Sprintf("DELETE FROM %s", qb.TableName)
 	return querySelect
 }
 

@@ -7,12 +7,13 @@ import (
 )
 
 type QueryBuilder interface {
-	// ection
+	// Action
 	Select(tableName string) *qb.QueryBuilder
-	Update(tableName string, entity interface{}) error
-	Insert(tableName string, entity interface{}) (int64, error)
-	Delete(tableName string, entity interface{}) error
-	Raw(query string, args ...interface{}) (*sql.Rows, error)
+	Insert(tableName string, entity interface{}) (Id int64, err error)
+	Update(tableName string) (RowsAffected int64, err error)
+	Delete(tableName string) (RowsAffected int64, err error)
+
+	Raw(query string, args ...interface{}) *qb.QueryBuilder
 
 	// condition
 	Where(columnName string, symbol string, value interface{}) *qb.QueryBuilder
@@ -29,14 +30,21 @@ type QueryBuilder interface {
 	// Execute
 	FindOne(entity interface{}) error
 	Find(entities interface{}) error
+	Get() (*sql.Rows, error)
+
+	// returning RowsAffected and error
+	Exec() (int64, error)
 
 	//Scanner
 	ScanRow(rows *sql.Rows, obj interface{}) error
 	ScanRows(rows *sql.Rows, obj interface{}) error
 
 	// Manipulation Connection
-	TrxBegin()
-	TrxRollback()
-	TrxCommit()
+	TrxBegin() error
+	TrxRollback() error
+	TrxCommit() error
 	Close()
+
+	// Scanner
+	ScanEntity(entity interface{}) *qb.QueryBuilder
 }

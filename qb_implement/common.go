@@ -25,6 +25,7 @@ func (qb *QueryBuilder) clearData() {
 	qb.OffsetValue = 0
 	qb.PrimeryKey = nil
 	qb.Args = nil
+	qb.Query = ""
 }
 
 // function defer

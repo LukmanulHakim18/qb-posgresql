@@ -3,35 +3,47 @@ package qb_implement
 import (
 	"database/sql"
 	"errors"
-	"fmt"
 	"reflect"
 	"strconv"
+	"strings"
 	"time"
 )
 
 // scaning entity to get tag db and value
-func (qb *QueryBuilder) ScanEntity(entity interface{}) {
+func (qb *QueryBuilder) ScanEntity(entity interface{}) *QueryBuilder {
 	t := reflect.TypeOf(entity)
 	v := reflect.ValueOf(entity)
 	for i := 0; i < t.NumField(); i++ {
 		tagDB := t.Field(i).Tag.Get("db")
-		name := t.Field(i).Name
-		fv := v.FieldByName(name)
-		if tagDB != "" && tagDB != "id" {
-			colUpdate := Column{Name: tagDB, Value: fv.Interface()}
-			qb.Columns = append(qb.Columns, colUpdate)
+		tagDB = strings.TrimSpace(tagDB)
+		tags := strings.Split(strings.TrimSpace(tagDB), ", ")
+		if len(tags) > 1 && tags[1] == "primaryKey" {
+			name := t.Field(i).Name
+			fv := v.FieldByName(name)
+			PkColumn := Column{Name: tags[0], Value: fv.Interface()}
+			qb.PrimeryKey = &PkColumn
+		} else {
+			name := t.Field(i).Name
+			fv := v.FieldByName(name)
+			if tagDB != "" && tagDB != "id" {
+				colUpdate := Column{Name: tagDB, Value: fv.Interface()}
+				qb.Columns = append(qb.Columns, colUpdate)
+			}
+			if tagDB == "id" {
+				PkColumn := Column{Name: "id", Value: fv.Interface()}
+				qb.PrimeryKey = &PkColumn
+			}
 		}
-		if tagDB == "id" {
-			qb.PrimeryKey = fv.Interface()
-		}
+
 	}
+	return qb
 }
 
 // use this for scan one row data
 func (qb *QueryBuilder) ScanRow(rows *sql.Rows, entity interface{}) error {
 	defer rows.Close()
 	if !rows.Next() {
-		return nil
+		return errors.New("data not found")
 	}
 	columns, _ := rows.Columns()
 	values := make([]interface{}, len(columns))
@@ -112,7 +124,10 @@ func (qb *QueryBuilder) populateData(ptrEntity interface{}, data map[string]inte
 	valNumFields := rt.NumField()
 	for i := 0; i < valNumFields; i++ {
 		field := rt.Field(i)
-		tag := field.Tag.Get("db")
+		tagDB := field.Tag.Get("db")
+		tagDB = strings.TrimSpace(tagDB)
+		tags := strings.Split(strings.TrimSpace(tagDB), ", ")
+		tag := tags[0]
 		if tag == "" || tag == "-" {
 			continue
 		}
@@ -122,7 +137,6 @@ func (qb *QueryBuilder) populateData(ptrEntity interface{}, data map[string]inte
 		switch field.Type.String() {
 		case "*time.Time":
 			if data[tag] != nil {
-				fmt.Println(name, data[tag])
 				t, _ := data[tag].(time.Time)
 				refdataVal := reflect.ValueOf(&t)
 				refValByname.Set(refdataVal.Convert(field.Type))
@@ -135,8 +149,6 @@ func (qb *QueryBuilder) populateData(ptrEntity interface{}, data map[string]inte
 		default:
 			if data[tag] != nil {
 				refValByname.Set(refdataVal.Convert(field.Type))
-			} else {
-				fmt.Println(name, data[tag])
 			}
 		}
 	}
@@ -166,7 +178,10 @@ func (qb *QueryBuilder) populateDatas(ptrEntities interface{}, datas []map[strin
 		valNumFields := elemType.NumField()
 		for i := 0; i < valNumFields; i++ {
 			field := elemType.Field(i)
-			tag := field.Tag.Get("db")
+			tagDB := field.Tag.Get("db")
+			tagDB = strings.TrimSpace(tagDB)
+			tags := strings.Split(strings.TrimSpace(tagDB), ", ")
+			tag := tags[0]
 			if tag == "" || tag == "-" {
 				continue
 			}
@@ -176,7 +191,6 @@ func (qb *QueryBuilder) populateDatas(ptrEntities interface{}, datas []map[strin
 			switch field.Type.String() {
 			case "*time.Time":
 				if data[tag] != nil {
-					fmt.Println(name, data[tag])
 					t, _ := data[tag].(time.Time)
 					refdataVal := reflect.ValueOf(&t)
 					refValByname.Set(refdataVal.Convert(field.Type))
@@ -189,8 +203,6 @@ func (qb *QueryBuilder) populateDatas(ptrEntities interface{}, datas []map[strin
 			default:
 				if data[tag] != nil {
 					refValByname.Set(refDataVal.Convert(field.Type))
-				} else {
-					fmt.Println(name, data[tag])
 				}
 			}
 
